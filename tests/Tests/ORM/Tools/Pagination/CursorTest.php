@@ -95,4 +95,61 @@ class CursorTest extends TestCase
 
         self::assertSame(['id' => 1, '_isNext' => true], $cursor->toArray());
     }
+
+    public function testFromEncodedStringThrowsForNonScalarParameterValue(): void
+    {
+        $json    = json_encode(['p.id' => [1, 2, 3]]);
+        self::assertIsString($json);
+        $encoded = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+
+        $this->expectException(InvalidCursor::class);
+
+        Cursor::fromEncodedString($encoded);
+    }
+
+    public function testFromEncodedStringThrowsForNonScalarIsNext(): void
+    {
+        $json    = json_encode(['id' => 1, '_isNext' => [true]]);
+        self::assertIsString($json);
+        $encoded = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+
+        $this->expectException(InvalidCursor::class);
+
+        Cursor::fromEncodedString($encoded);
+    }
+
+    public function testFromEncodedStringCoercesIsNextToBoolean(): void
+    {
+        $json    = json_encode(['id' => 10, '_isNext' => 1]);
+        self::assertIsString($json);
+        $encoded = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+
+        $cursor = Cursor::fromEncodedString($encoded);
+
+        self::assertIsBool($cursor->isNext());
+        self::assertTrue($cursor->isNext());
+    }
+
+    public function testFromEncodedStringCoercesIsNextZeroToFalse(): void
+    {
+        $json    = json_encode(['id' => 10, '_isNext' => 0]);
+        self::assertIsString($json);
+        $encoded = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+
+        $cursor = Cursor::fromEncodedString($encoded);
+
+        self::assertIsBool($cursor->isNext());
+        self::assertFalse($cursor->isNext());
+    }
+
+    public function testFromEncodedStringAcceptsNullParameterValue(): void
+    {
+        $json    = json_encode(['id' => null]);
+        self::assertIsString($json);
+        $encoded = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+
+        $cursor = Cursor::fromEncodedString($encoded);
+
+        self::assertNull($cursor->getParameters()['id']);
+    }
 }

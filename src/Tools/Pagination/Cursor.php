@@ -9,6 +9,7 @@ use JsonException;
 
 use function base64_decode;
 use function base64_encode;
+use function is_scalar;
 use function json_decode;
 use function json_encode;
 use function rtrim;
@@ -91,7 +92,13 @@ final class Cursor
             throw new InvalidCursor($encodedString, $e);
         }
 
-        $isNext = $parameters['_isNext'] ?? true;
+        foreach ($parameters as $value) {
+            if ($value !== null && ! is_scalar($value)) {
+                throw new InvalidCursor($encodedString);
+            }
+        }
+
+        $isNext = (bool) ($parameters['_isNext'] ?? true);
 
         unset($parameters['_isNext']);
 

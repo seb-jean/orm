@@ -12,6 +12,7 @@ use Doctrine\ORM\Query;
 use Doctrine\ORM\Query\AST\PathExpression;
 use Doctrine\ORM\Query\QueryException;
 use Doctrine\ORM\QueryBuilder;
+use Doctrine\ORM\Tools\Pagination\Exception\InvalidCursor;
 use Doctrine\ORM\Utility\PersisterHelper;
 use IteratorAggregate;
 use LogicException;
@@ -22,6 +23,8 @@ use function array_reverse;
 use function array_slice;
 use function array_sum;
 use function count;
+use function get_debug_type;
+use function is_string;
 
 /**
  * The cursor paginator handles cursor-based pagination for DQL queries.
@@ -80,10 +83,16 @@ final class CursorPaginator implements IteratorAggregate
      * @param Cursor|string|null $cursor The cursor instance, encoded cursor string, null or empty string for the first page.
      * @param int                $limit  The maximum number of results to return.
      *
+     * @throws InvalidCursor If $cursor is not a Cursor instance, string, or null.
+     *
      * @return $this
      */
-    public function paginate(Cursor|string|null $cursor, int $limit): self
+    public function paginate(mixed $cursor, int $limit): self
     {
+        if ($cursor !== null && ! ($cursor instanceof Cursor) && ! is_string($cursor)) {
+            throw new InvalidCursor(get_debug_type($cursor));
+        }
+
         if ($cursor instanceof Cursor) {
             $this->cursor = $cursor;
         } else {
