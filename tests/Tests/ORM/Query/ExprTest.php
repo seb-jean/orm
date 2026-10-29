@@ -214,6 +214,11 @@ class ExprTest extends OrmTestCase
         self::assertEquals('LOWER(u.first_name)', (string) $this->expr->lower('u.first_name'));
     }
 
+    public function testUnaccentExpr(): void
+    {
+        self::assertEquals('UNACCENT(u.first_name)', (string) $this->expr->unaccent('u.first_name'));
+    }
+
     public function testUpperExpr(): void
     {
         self::assertEquals('UPPER(u.first_name)', (string) $this->expr->upper('u.first_name'));

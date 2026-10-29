@@ -523,6 +523,18 @@ class Expr
     }
 
     /**
+     * Creates an UNACCENT() function expression with the given argument.
+     *
+     * @param mixed $x Argument to be used in UNACCENT() function.
+     *
+     * @return Expr\Func An UNACCENT function expression.
+     */
+    public function unaccent(mixed $x): Expr\Func
+    {
+        return new Expr\Func('UNACCENT', [$x]);
+    }
+
+    /**
      * Creates an UPPER() function expression with the given argument.
      *
      * @param mixed $x Argument to be used in UPPER() function.
