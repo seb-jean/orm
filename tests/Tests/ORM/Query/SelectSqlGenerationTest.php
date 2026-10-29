@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Doctrine\Tests\ORM\Query;
 
 use Doctrine\DBAL\LockMode;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Platforms\OraclePlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
@@ -31,6 +32,7 @@ use Doctrine\Tests\OrmTestCase;
 use Exception;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RequiresMethod;
 
 use function class_exists;
 
@@ -468,6 +470,19 @@ class SelectSqlGenerationTest extends OrmTestCase
         $this->assertSqlGeneration(
             "SELECT u.name FROM Doctrine\Tests\Models\CMS\CmsUser u WHERE TRIM(TRAILING '0' FROM u.name) != ''",
             "SELECT c0_.name AS name_0 FROM cms_users c0_ WHERE TRIM(TRAILING '0' FROM c0_.name) <> ''",
+        );
+    }
+
+    #[RequiresMethod(AbstractPlatform::class, 'getUnaccentExpression')]
+    public function testSupportsUnaccentFunction(): void
+    {
+        $this->entityManager = $this->createTestEntityManagerWithPlatform(new PostgreSQLPlatform());
+
+        $this->assertSqlGeneration(
+            'SELECT UNACCENT(u.name) FROM Doctrine\Tests\Models\CMS\CmsUser u'
+                . ' WHERE UNACCENT(LOWER(u.name)) = UNACCENT(LOWER(:name))',
+            'SELECT unaccent(c0_.name) AS sclr_0 FROM cms_users c0_'
+                . ' WHERE unaccent(LOWER(c0_.name)) = unaccent(LOWER(?))',
         );
     }
 

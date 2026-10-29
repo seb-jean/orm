@@ -842,6 +842,13 @@ clauses:
    string.
 -  ``TRIM([LEADING | TRAILING | BOTH] ['trchar' FROM] str)`` - Trim
    the string by the given trim char, defaults to whitespaces.
+-  ``UNACCENT(str)`` - Return the string without the diacritics of its
+   letters, like ``unaccent()`` of PostgreSQL, which requires the
+   ``unaccent`` extension. The other platforms remove the diacritics of
+   the letters of the Latin-1 Supplement and Latin Extended-A Unicode
+   blocks, and of the Romanian letters with a comma below, and expand
+   the ligatures (``Æ`` becomes ``AE``, ``ß`` becomes ``ss``...) as
+   ``unaccent()`` does. Requires ``doctrine/dbal`` 4.6.
 -  ``UPPER(str)`` - Return the upper-case of the given string.
 -  ``DATE_ADD(date, value, unit)`` - Add the given time to a given date.
    (Supported units are ``SECOND``, ``MINUTE``, ``HOUR``, ``DAY``,
@@ -1871,5 +1878,6 @@ Functions
             "SUBSTRING" "(" StringPrimary "," SimpleArithmeticExpression "," SimpleArithmeticExpression ")" |
             "TRIM" "(" [["LEADING" | "TRAILING" | "BOTH"] [char] "FROM"] StringPrimary ")" |
             "LOWER" "(" StringPrimary ")" |
+            "UNACCENT" "(" StringPrimary ")" |
             "UPPER" "(" StringPrimary ")" |
             "IDENTITY" "(" SingleValuedAssociationPathExpression {"," string} ")"
