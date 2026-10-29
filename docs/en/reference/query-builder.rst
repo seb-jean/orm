@@ -521,6 +521,9 @@ complete list of supported helper methods available:
         // Example - $qb->expr()->lower('u.firstname')
         public function lower($x); // Returns Expr\Func
 
+        // Example - $qb->expr()->unaccent('u.firstname')
+        public function unaccent($x); // Returns Expr\Func
+
         // Example - $qb->expr()->upper('u.firstname')
         public function upper($x); // Returns Expr\Func
 

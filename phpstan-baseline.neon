@@ -2263,6 +2263,18 @@ parameters:
 			path: src/Query/AST/Functions/TrimFunction.php
 
 		-
+			message: '#^Call to function method_exists\(\) with ''Doctrine\\\\DBAL\\\\Platforms\\\\AbstractPlatform'' and ''getUnaccentExpressi…'' will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Query/AST/Functions/UnaccentFunction.php
+
+		-
+			message: '#^Call to function method_exists\(\) with Doctrine\\DBAL\\Platforms\\AbstractPlatform and ''getUnaccentExpressi…'' will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: src/Query/AST/Functions/UnaccentFunction.php
+
+		-
 			message: '#^Call to an undefined method Doctrine\\ORM\\Query\\SqlWalker\:\:walkJoinPathExpression\(\)\.$#'
 			identifier: method.notFound
 			count: 1

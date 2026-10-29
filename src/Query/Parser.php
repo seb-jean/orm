@@ -62,6 +62,7 @@ final class Parser
         'substring' => Functions\SubstringFunction::class,
         'trim'      => Functions\TrimFunction::class,
         'lower'     => Functions\LowerFunction::class,
+        'unaccent'  => Functions\UnaccentFunction::class,
         'upper'     => Functions\UpperFunction::class,
         'identity'  => Functions\IdentityFunction::class,
     ];
@@ -3500,6 +3501,7 @@ final class Parser
      *   "SUBSTRING" "(" StringPrimary "," SimpleArithmeticExpression "," SimpleArithmeticExpression ")" |
      *   "TRIM" "(" [["LEADING" | "TRAILING" | "BOTH"] [char] "FROM"] StringPrimary ")" |
      *   "LOWER" "(" StringPrimary ")" |
+     *   "UNACCENT" "(" StringPrimary ")" |
      *   "UPPER" "(" StringPrimary ")" |
      *   "IDENTITY" "(" SingleValuedAssociationPathExpression {"," string} ")"
      */
