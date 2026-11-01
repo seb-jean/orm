@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace Doctrine\Tests\ORM\Tools\Pagination;
 
+use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Query;
 use Doctrine\ORM\Query\Parser;
 use Doctrine\ORM\Tools\Pagination\CursorWalker;
+use Doctrine\Tests\DbalTypes\BinaryCode;
+use Doctrine\Tests\DbalTypes\BinaryCodeType;
 use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 class CursorWalkerTest extends PaginationTestCase
 {
@@ -131,6 +136,35 @@ class CursorWalkerTest extends PaginationTestCase
 
         self::assertSame(5, $query->getParameter('p_id_0')?->getValue());
         self::assertSame(10, $query->getParameter('dctrn_cursor_0')?->getValue());
+    }
+
+    #[DataProvider('codeCursorValues')]
+    public function testCursorValuesAreBoundThroughTheTypeOfTheirField(string $code): void
+    {
+        if (! Type::hasType(BinaryCodeType::NAME)) {
+            Type::addType(BinaryCodeType::NAME, BinaryCodeType::class);
+        }
+
+        $query = $this->entityManager->createQuery(
+            'SELECT i FROM Doctrine\Tests\Models\Pagination\CodedItem i ORDER BY i.code ASC, i.id ASC',
+        );
+        $query->setHint(Query::HINT_CUSTOM_TREE_WALKERS, [CursorWalker::class]);
+        $query->setHint(CursorWalker::HINT_CURSOR_REVERSE, false);
+        $query->setHint(CursorWalker::HINT_CURSOR_PARAMETERS, ['i.code' => $code, 'i.id' => 1]);
+
+        $query->getSQL();
+
+        self::assertEquals(new BinaryCode('ff000001'), $query->getParameter('dctrn_cursor_0')?->getValue());
+        self::assertSame(BinaryCodeType::NAME, $query->getParameter('dctrn_cursor_0')?->getType());
+        self::assertSame(1, $query->getParameter('dctrn_cursor_1')?->getValue());
+        self::assertSame(Types::INTEGER, $query->getParameter('dctrn_cursor_1')?->getType());
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function codeCursorValues(): iterable
+    {
+        yield 'string representation of the value object' => ['ff000001'];
+        yield 'database value' => ["\xff\x00\x00\x01"];
     }
 
     public function testQueryWithJoinAndOrderByJoinedEntity(): void

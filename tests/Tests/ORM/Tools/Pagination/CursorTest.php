@@ -7,6 +7,7 @@ namespace Doctrine\Tests\ORM\Tools\Pagination;
 use Doctrine\ORM\Tools\Pagination\Cursor;
 use Doctrine\ORM\Tools\Pagination\Exception\InvalidCursor;
 use JsonException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 
@@ -14,6 +15,8 @@ use function base64_encode;
 use function json_encode;
 use function rtrim;
 use function strtr;
+
+use const INF;
 
 class CursorTest extends TestCase
 {
@@ -124,5 +127,22 @@ class CursorTest extends TestCase
         $payload = rtrim(strtr(base64_encode((string) json_encode('just-a-string')), '+/', '-_'), '=');
         $this->expectException(InvalidCursor::class);
         Cursor::fromEncodedString($payload);
+    }
+
+    /** @param scalar $value */
+    #[DataProvider('parametersThatCannotBeEncodedAsJson')]
+    public function testEncodeToStringThrowsForParameterThatCannotBeEncodedAsJson(mixed $value): void
+    {
+        // an empty cursor would silently lead back to the first page
+        $this->expectException(JsonException::class);
+
+        (new Cursor(['p.code' => $value]))->encodeToString();
+    }
+
+    /** @return iterable<string, array{scalar}> */
+    public static function parametersThatCannotBeEncodedAsJson(): iterable
+    {
+        yield 'binary string' => ["\xff\x00\x00\x01"];
+        yield 'non-finite float' => [INF];
     }
 }

@@ -9,6 +9,7 @@ use Doctrine\DBAL\Driver;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Result;
 use Doctrine\DBAL\Schema\Name\UnquotedIdentifierFolding;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\ORM\Decorator\EntityManagerDecorator;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Internal\Hydration\AbstractHydrator;
@@ -16,9 +17,14 @@ use Doctrine\ORM\Query;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\ORM\Tools\Pagination\Cursor;
 use Doctrine\ORM\Tools\Pagination\CursorItem;
+use Doctrine\ORM\Tools\Pagination\CursorPage;
 use Doctrine\ORM\Tools\Pagination\CursorPaginator;
 use Doctrine\ORM\Tools\Pagination\Exception\InvalidCursor;
+use Doctrine\Tests\DbalTypes\BinaryCode;
+use Doctrine\Tests\DbalTypes\BinaryCodeType;
+use Doctrine\Tests\Models\Pagination\CodedItem;
 use Doctrine\Tests\OrmTestCase;
+use JsonException;
 use LogicException;
 use PHPUnit\Framework\MockObject\MockObject;
 use SortDirection;
@@ -521,6 +527,51 @@ class CursorPaginatorTest extends OrmTestCase
 
         $cursor = $page->getNextCursor();
         self::assertSame(42, $cursor->getParameters()['b.author']);
+    }
+
+    public function testGetNextCursorHoldsTheStringRepresentationOfAValueObject(): void
+    {
+        $page = $this->paginateCodedItems(new BinaryCode('ff000001'));
+
+        // unlike its database value, which is binary, it can be encoded as JSON
+        self::assertSame(['i.code' => 'ff000001'], $page->getNextCursor()->getParameters());
+    }
+
+    public function testGetNextCursorHoldsTheDatabaseValueOfAValueObjectWhoseStringRepresentationIsNotReadBack(): void
+    {
+        $code = new class ('ff000001') extends BinaryCode {
+            public function __toString(): string
+            {
+                return 'code ' . $this->hex;
+            }
+        };
+
+        $page = $this->paginateCodedItems($code);
+
+        self::assertSame(['i.code' => "\xff\x00\x00\x01"], $page->getNextCursor()->getParameters());
+
+        $this->expectException(JsonException::class);
+
+        $page->getNextCursorAsString();
+    }
+
+    /** @return CursorPage<CodedItem> */
+    private function paginateCodedItems(BinaryCode $firstCode): CursorPage
+    {
+        if (! Type::hasType(BinaryCodeType::NAME)) {
+            Type::addType(BinaryCodeType::NAME, BinaryCodeType::class);
+        }
+
+        $this->hydrator->method('hydrateAll')->willReturn([
+            new CodedItem($firstCode),
+            new CodedItem(new BinaryCode('ff000002')),
+        ]);
+        $this->connection->method('executeQuery')->willReturn($this->createMock(Result::class));
+
+        $query = new Query($this->em);
+        $query->setDQL('SELECT i FROM Doctrine\Tests\Models\Pagination\CodedItem i ORDER BY i.code ASC');
+
+        return (new CursorPaginator(1, queryProducesDuplicates: false))->paginate($query, null);
     }
 
     public function testPaginateDoesNotWriteQueryCacheEntryPerCursor(): void
