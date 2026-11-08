@@ -20,6 +20,10 @@ on:
       - src/**
       - tests/**
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 env:
   fail-fast: true
 
@@ -33,22 +37,18 @@ jobs:
         matrix.extension || 'Ø',
         matrix.native_lazy || 'Ø'
       ) }}
-    runs-on: "ubuntu-22.04"
+    runs-on: "ubuntu-latest"
 
     strategy:
       matrix:
         php-version:
           - "8.1"
-          - "8.2"
-          - "8.3"
           - "8.4"
           - "8.5"
           - "8.6"
         dbal-version:
           - "default"
-          - "3.7"
         extension:
-          - "sqlite3"
           - "pdo_sqlite"
         deps:
           - "highest"
@@ -57,13 +57,23 @@ jobs:
         native_lazy:
           - "0"
         include:
-          - php-version: "8.2"
+          - php-version: "8.5"
+            dbal-version: "3.7"
+            extension: "pdo_sqlite"
+            stability: "stable"
+            native_lazy: "0"
+          - php-version: "8.5"
             dbal-version: "4@dev"
             extension: "pdo_sqlite"
             stability: "stable"
             native_lazy: "0"
-          - php-version: "8.2"
-            dbal-version: "4@dev"
+          - php-version: "8.1"
+            dbal-version: "default"
+            extension: "sqlite3"
+            stability: "stable"
+            native_lazy: "0"
+          - php-version: "8.5"
+            dbal-version: "default"
             extension: "sqlite3"
             stability: "stable"
             native_lazy: "0"
@@ -166,7 +176,7 @@ jobs:
 
   phpunit-deprecations:
     name: "PHPUnit (fail on deprecations)"
-    runs-on: "ubuntu-24.04"
+    runs-on: "ubuntu-latest"
 
     steps:
       -   name: "Checkout"
@@ -194,7 +204,7 @@ jobs:
       -   name: "Run PHPUnit"
           run: "vendor/bin/phpunit -c ci/github/phpunit/sqlite3.xml --fail-on-deprecation"
           env:
-            ENABLE_DBAL_EDITOR_API: 0
+            ENABLE_DBAL_EDITOR_API: 1
             ENABLE_SECOND_LEVEL_CACHE: 0
             ENABLE_NATIVE_LAZY_OBJECTS: 1
 
@@ -207,31 +217,30 @@ jobs:
         matrix.dbal-version || 'Ø',
         matrix.extension || 'Ø'
       ) }}
-    runs-on: "ubuntu-22.04"
+    runs-on: "ubuntu-latest"
     needs: "phpunit-smoke-check"
 
     strategy:
       matrix:
         php-version:
-          - "8.2"
-          - "8.3"
-          - "8.4"
           - "8.5"
-          - "8.6"
         dbal-version:
           - "default"
-          - "3.7"
         postgres-version:
           - "17"
         extension:
           - pdo_pgsql
           - pgsql
         include:
-          - php-version: "8.2"
+          - php-version: "8.5"
+            dbal-version: "3.7"
+            postgres-version: "17"
+            extension: pdo_pgsql
+          - php-version: "8.5"
             dbal-version: "4@dev"
             postgres-version: "14"
             extension: pdo_pgsql
-          - php-version: "8.2"
+          - php-version: "8.5"
             dbal-version: "3.7"
             postgres-version: "9.6"
             extension: pdo_pgsql
@@ -272,7 +281,7 @@ jobs:
           composer-options: "--ignore-platform-req=php+"
 
       - name: "Run PHPUnit"
-        run: "vendor/bin/phpunit -c ci/github/phpunit/pdo_pgsql.xml --coverage-clover=coverage.xml"
+        run: "vendor/bin/phpunit -c ci/github/phpunit/${{ matrix.extension }}.xml --coverage-clover=coverage.xml"
         env:
             ENABLE_DBAL_EDITOR_API: ${{ matrix.dbal-version == '4@dev' }}
 
@@ -291,26 +300,29 @@ jobs:
         matrix.dbal-version || 'Ø',
         matrix.extension || 'Ø'
       ) }}
-    runs-on: "ubuntu-22.04"
+    runs-on: "ubuntu-latest"
     needs: "phpunit-smoke-check"
 
     strategy:
       matrix:
         php-version:
-          - "8.2"
-          - "8.3"
-          - "8.4"
           - "8.5"
-          - "8.6"
         dbal-version:
           - "default"
-          - "3.7"
-          - "4@dev"
         mariadb-version:
           - "11.4"
         extension:
           - "mysqli"
           - "pdo_mysql"
+        include:
+          - php-version: "8.5"
+            dbal-version: "3.7"
+            mariadb-version: "11.4"
+            extension: "pdo_mysql"
+          - php-version: "8.5"
+            dbal-version: "4@dev"
+            mariadb-version: "11.4"
+            extension: "pdo_mysql"
 
     services:
       mariadb:
@@ -368,32 +380,30 @@ jobs:
         matrix.dbal-version || 'Ø',
         matrix.extension || 'Ø'
       ) }}
-    runs-on: "ubuntu-22.04"
+    runs-on: "ubuntu-latest"
     needs: "phpunit-smoke-check"
 
     strategy:
       matrix:
         php-version:
-          - "8.2"
-          - "8.3"
-          - "8.4"
           - "8.5"
-          - "8.6"
         dbal-version:
           - "default"
-          - "3.7"
         mysql-version:
           - "5.7"
           - "8.0"
         extension:
-          - "mysqli"
           - "pdo_mysql"
         include:
-          - php-version: "8.2"
-            dbal-version: "4@dev"
+          - php-version: "8.5"
+            dbal-version: "default"
             mysql-version: "8.0"
             extension: "mysqli"
-          - php-version: "8.2"
+          - php-version: "8.5"
+            dbal-version: "3.7"
+            mysql-version: "8.0"
+            extension: "pdo_mysql"
+          - php-version: "8.5"
             dbal-version: "4@dev"
             mysql-version: "8.0"
             extension: "pdo_mysql"
@@ -439,27 +449,6 @@ jobs:
             ENABLE_DBAL_EDITOR_API: ${{ matrix.dbal-version == '4@dev' }}
             ENABLE_SECOND_LEVEL_CACHE: 0
 
-      - name: "Run PHPUnit with Second Level Cache and PHPUnit 10"
-        run: |
-          vendor/bin/phpunit -c ci/github/phpunit/${{ matrix.extension }}.xml \
-            --exclude-group=performance,non-cacheable,locking_functional \
-            --coverage-clover=coverage-no-cache.xml"
-        if: "${{ matrix.php-version == '8.1' }}"
-        env:
-            ENABLE_DBAL_EDITOR_API: ${{ matrix.dbal-version == '4@dev' }}
-            ENABLE_SECOND_LEVEL_CACHE: 1
-      - name: "Run PHPUnit with Second Level Cache and PHPUnit 11+"
-        run: |
-          vendor/bin/phpunit -c ci/github/phpunit/${{ matrix.extension }}.xml \
-            --exclude-group=performance \
-            --exclude-group=non-cacheable \
-            --exclude-group=locking_functional \
-            --coverage-clover=coverage-no-cache.xml
-        if: "${{ matrix.php-version != '8.1' }}"
-        env:
-            ENABLE_DBAL_EDITOR_API: ${{ matrix.dbal-version == '4@dev' }}
-            ENABLE_SECOND_LEVEL_CACHE: 1
-
       - name: "Upload coverage files"
         uses: "actions/upload-artifact@v7"
         with:
@@ -468,7 +457,7 @@ jobs:
 
   upload_coverage:
     name: "Upload coverage to Codecov"
-    runs-on: "ubuntu-22.04"
+    runs-on: "ubuntu-latest"
     # Only run on PRs from forks
     if: "github.event.pull_request.head.repo.full_name != github.repository"
     needs:

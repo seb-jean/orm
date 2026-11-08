@@ -21,18 +21,22 @@ on:
       - phpbench.json
       - tests/**
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 env:
   fail-fast: true
 
 jobs:
   phpbench:
     name: "PHPBench"
-    runs-on: "ubuntu-22.04"
+    runs-on: "ubuntu-latest"
 
     strategy:
       matrix:
         php-version:
-          - "8.1"
+          - "8.2"
 
     steps:
       - name: "Checkout"
