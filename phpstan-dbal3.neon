@@ -46,6 +46,11 @@ parameters:
             message: '~.*getTrimExpression.*expects int.*~'
             path: src/Query/AST/Functions/TrimFunction.php
 
+        # TypeProvider only exists on DBAL >= 4.6
+        -
+            message: '~Doctrine\\DBAL\\Types\\TypeProvider~'
+            identifier: class.notFound
+
         -
             message: '~^Call to static method unquoted\(\) on an unknown class Doctrine\\DBAL\\Schema\\Name\\Identifier\.$~'
             path: src/Tools/SchemaTool.php
@@ -120,6 +125,8 @@ parameters:
         - '~^Class Doctrine\\DBAL\\Platforms\\SQLitePlatform not found\.$~'
 
         - '~^Class Doctrine\\DBAL\\Schema\\NamedObject not found\.$~'
+        - '~^Class Doctrine\\DBAL\\Schema\\Name\\Parsers not found\.$~'
+        - '~^Call to an undefined static method Doctrine\\DBAL\\Schema\\Index\:\:editor\(\)\.$~'
 
         -
             message: '~sort~'
@@ -129,6 +136,12 @@ parameters:
         -
             message: '#^Parameter \#1 \$asset of static method Doctrine\\ORM\\Mapping\\Driver\\DatabaseDriver\:\:getAssetName\(\) expects Doctrine\\DBAL\\Schema\\AbstractAsset, Doctrine\\DBAL\\Schema\\Column\|false given\.$#'
             identifier: argument.type
+            path: src/Mapping/Driver/DatabaseDriver.php
+
+        -
+            message: '#^Method Doctrine\\ORM\\Mapping\\Driver\\DatabaseDriver\:\:getIndexedColumns\(\) should return list\<string\> but returns array(\<string\>)?\.$#'
+            identifier: return.type
+            count: 2
             path: src/Mapping/Driver/DatabaseDriver.php
 
         -
@@ -225,6 +238,14 @@ parameters:
             path: src/Tools/SchemaTool.php
 
         -
+            message: '~^Parameter \$indexEditor of method .*SchemaTool\:\:applyIndexFlags\(\) has invalid type Doctrine\\DBAL\\Schema\\IndexEditor\.$~'
+            path: src/Tools/SchemaTool.php
+
+        -
+            message: '~^Call to method (?:setIsClustered|setType)\(\) on an unknown class Doctrine\\DBAL\\Schema\\IndexEditor\.$~'
+            path: src/Tools/SchemaTool.php
+
+        -
             message: '~^Call to an undefined method Doctrine\\DBAL\\Schema\\Table::edit\(\)\.$~'
             path: src/Tools/SchemaTool.php
 
@@ -243,3 +264,10 @@ parameters:
         -
             message: '~^Call to an undefined method .*Schema.*edit~'
             path: src/Tools/SchemaTool.php
+
+        # That file is not intended for use with DBAL 3
+        -
+            message: '~.*~'
+            paths:
+                - src/Tools/ExperimentalSchemaTool.php
+                - src/Internal/Name/NameParser.php

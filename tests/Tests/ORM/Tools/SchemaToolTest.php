@@ -5,19 +5,26 @@ declare(strict_types=1);
 namespace Doctrine\Tests\ORM\Tools;
 
 use Doctrine\Common\Collections\Collection;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint\ReferentialAction;
 use Doctrine\DBAL\Schema\ForeignKeyConstraintEditor;
 use Doctrine\DBAL\Schema\Index as DbalIndex;
 use Doctrine\DBAL\Schema\Index\IndexedColumn;
 use Doctrine\DBAL\Schema\Index\IndexType;
+use Doctrine\DBAL\Schema\Name\Identifier;
 use Doctrine\DBAL\Schema\Name\UnqualifiedName;
+use Doctrine\DBAL\Schema\Name\UnquotedIdentifierFolding;
 use Doctrine\DBAL\Schema\PrimaryKeyConstraint;
 use Doctrine\DBAL\Schema\PrimaryKeyConstraintEditor;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table as DbalTable;
+use Doctrine\DBAL\Schema\TableEditor;
 use Doctrine\DBAL\Types\EnumType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\Deprecations\PHPUnit\VerifyDeprecations;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\Column;
 use Doctrine\ORM\Mapping\DiscriminatorColumn;
@@ -58,8 +65,10 @@ use Doctrine\Tests\Models\Forum\ForumUser;
 use Doctrine\Tests\Models\GH10288\GH10288People;
 use Doctrine\Tests\Models\NullDefault\NullDefaultColumn;
 use Doctrine\Tests\OrmTestCase;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\IgnoreDeprecations;
 use PHPUnit\Framework\Attributes\RequiresMethod;
 
 use function array_map;
@@ -96,9 +105,21 @@ class SchemaToolTest extends OrmTestCase
         self::assertTrue(self::columnIsIndexed($schema->getTable('cms_users'), 'username'), 'username column should be indexed.');
     }
 
+    /** Only the schema generation based on the schema editor API deprecates custom platform options. */
+    private function expectSchemaEditorApiDeprecation(EntityManagerInterface $em): void
+    {
+        if (! $em->getConfiguration()->getUseSchemaEditorApi()) {
+            return;
+        }
+
+        $this->expectDeprecationWithIdentifier('https://github.com/doctrine/orm/pull/12733');
+    }
+
+    #[IgnoreDeprecations]
     public function testAttributeOptionsArgument(): void
     {
-        $em         = $this->getTestEntityManager();
+        $em = $this->getTestEntityManager();
+        $this->expectSchemaEditorApiDeprecation($em);
         $schemaTool = new SchemaTool($em);
 
         $schema = $schemaTool->getSchemaFromMetadata(
@@ -137,9 +158,11 @@ class SchemaToolTest extends OrmTestCase
     }
 
     #[Group('6830')]
+    #[IgnoreDeprecations]
     public function testPassColumnOptionsToJoinColumn(): void
     {
-        $em       = $this->getTestEntityManager();
+        $em = $this->getTestEntityManager();
+        $this->expectSchemaEditorApiDeprecation($em);
         $category = $em->getClassMetadata(GH6830Category::class);
         $board    = $em->getClassMetadata(GH6830Board::class);
 
@@ -266,6 +289,19 @@ class SchemaToolTest extends OrmTestCase
 
         self::assertCount(1, $indexes, 'there should be only one index');
         self::assertSame($primaryKey, current($indexes), 'index should be primary');
+    }
+
+    public function testScalarUniqueIdentifierProducesOnlyPrimaryKey(): void
+    {
+        $em         = $this->getTestEntityManager();
+        $schemaTool = new SchemaTool($em);
+
+        $schema = $schemaTool->getSchemaFromMetadata([$em->getClassMetadata(UniqueScalarIdEntity::class)]);
+
+        $indexes = $schema->getTable('unique_scalar_id')->getIndexes();
+
+        self::assertCount(1, $indexes, 'there should be only one index');
+        self::assertTrue($schema->getTable('unique_scalar_id')->hasIndex('primary'));
     }
 
     public function testSetDiscriminatorColumnWithoutLength(): void
@@ -682,6 +718,40 @@ class SchemaToolTest extends OrmTestCase
         self::assertSame(['field', 'anotherField'], self::getIndexedColumns($tableIndex));
     }
 
+    #[DataProvider('platformsProvider')]
+    public function testQuotedIdentifiersOnPlatform(AbstractPlatform $platform): void
+    {
+        $em = $this->createTestEntityManagerWithPlatform($platform);
+
+        if (! $em->getConfiguration()->getUseSchemaEditorApi()) {
+            self::markTestSkipped('Requires the schema editor API.');
+        }
+
+        $schemaTool = new SchemaTool($em);
+
+        $schema = $schemaTool->getSchemaFromMetadata([$em->getClassMetadata(QuotedEntity::class)]);
+
+        $table = $schema->getTable('quoted-table');
+
+        $objectName = $table->getObjectName();
+        self::assertTrue($objectName->getUnqualifiedName()->isQuoted());
+        self::assertSame('quoted-table', $objectName->getUnqualifiedName()->getValue());
+
+        $primaryKey = $table->getPrimaryKeyConstraint();
+        self::assertNotNull($primaryKey);
+
+        [$pkColumn] = $primaryKey->getColumnNames();
+        self::assertTrue($pkColumn->getIdentifier()->isQuoted());
+        self::assertSame('quoted-id', $pkColumn->getIdentifier()->getValue());
+    }
+
+    /** @return iterable<string, array{AbstractPlatform}> */
+    public static function platformsProvider(): iterable
+    {
+        yield 'MySQL (backticks)' => [new MySQLPlatform()];
+        yield 'SQL Server (square brackets)' => [new SQLServerPlatform()];
+    }
+
     public function testQuotedIdentifiers(): void
     {
         $em         = $this->getTestEntityManager();
@@ -694,7 +764,26 @@ class SchemaToolTest extends OrmTestCase
 
         $table = $schema->getTable('quoted-table');
 
-        self::assertTrue($table->hasIndex('IDX_AA2790FB50D14D90'));
+        $foundIndex = false;
+        if (class_exists(TableEditor::class)) {
+            foreach ($table->getIndexes() as $index) {
+                foreach ($index->getIndexedColumns() as $column) {
+                    if (
+                        $column->getColumnName()->getIdentifier()->equals(
+                            Identifier::quoted('quoted-name'),
+                            UnquotedIdentifierFolding::NONE,
+                        )
+                    ) {
+                        $foundIndex = true;
+                        break 2;
+                    }
+                }
+            }
+        } elseif ($table->hasIndex('IDX_AA2790FB50D14D90')) {
+            $foundIndex = true;
+        }
+
+        self::assertTrue($foundIndex, 'Index on quoted-name should exist.');
 
         // DBAL < 4.3
         if (! class_exists(PrimaryKeyConstraint::class)) {
@@ -840,6 +929,20 @@ class SchemaToolTest extends OrmTestCase
         self::assertFalse(self::indexIsFulltext($table->getIndex('idx_other')));
     }
 
+    public function testIndexFlagsAreApplied(): void
+    {
+        $table = $this->getSchemaTableForEntity(GH5593FlaggedIndexes::class);
+
+        self::assertTrue($table->hasIndex('fulltext_title'));
+        self::assertTrue($table->hasIndex('spatial_title'));
+        self::assertTrue($table->hasIndex('clustered_title'));
+
+        self::assertIndexIsFulltext($table->getIndex('fulltext_title'));
+        self::assertIndexIsSpatial($table->getIndex('spatial_title'));
+        self::assertTrue(self::indexIsClustered($table->getIndex('clustered_title')), 'Index should be clustered.');
+        self::assertFalse(self::indexIsClustered($table->getIndex('fulltext_title')), 'Index should not be clustered.');
+    }
+
     #[Group('GH-5593')]
     public function testPartialIndexOptionsStillPreventDeduplication(): void
     {
@@ -856,6 +959,50 @@ class SchemaToolTest extends OrmTestCase
         self::assertSame('name IS NOT NULL', self::getIndexPredicate($table->getIndex('idx_partial')));
         self::assertSame('code IS NOT NULL', self::getIndexPredicate($table->getIndex('uniq_code')));
         self::assertNull(self::getIndexPredicate($table->getIndex('uniq_name')));
+    }
+
+    #[RequiresMethod(Schema::class, 'edit')]
+    public function testConflictingIndexTypeFlagsThrow(): void
+    {
+        if (! $this->getTestEntityManager()->getConfiguration()->getUseSchemaEditorApi()) {
+            self::markTestSkipped('Requires the schema editor API.');
+        }
+
+        $em         = $this->getTestEntityManager();
+        $schemaTool = new SchemaTool($em);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('An index cannot be both fulltext and spatial.');
+
+        $schemaTool->getSchemaFromMetadata([$em->getClassMetadata(FulltextSpatialFlagIndex::class)]);
+    }
+
+    #[RequiresMethod(Schema::class, 'edit')]
+    #[DataProvider('provideNonUniqueIndexFlags')]
+    public function testUniqueConstraintWithIncompatibleFlagThrows(string $flag): void
+    {
+        $em = $this->getTestEntityManager();
+
+        if (! $em->getConfiguration()->getUseSchemaEditorApi()) {
+            self::markTestSkipped('Requires the schema editor API.');
+        }
+
+        $metadata = $em->getClassMetadata(FulltextSpatialFlagIndex::class);
+
+        $metadata->table['indexes']           = [];
+        $metadata->table['uniqueConstraints'] = ['uniq_title' => ['columns' => ['title'], 'flags' => [$flag]]];
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('A unique index cannot be fulltext or spatial.');
+
+        (new SchemaTool($em))->getSchemaFromMetadata([$metadata]);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function provideNonUniqueIndexFlags(): iterable
+    {
+        yield 'fulltext' => ['fulltext'];
+        yield 'spatial' => ['spatial'];
     }
 
     #[RequiresMethod(Schema::class, 'edit')]
@@ -883,6 +1030,31 @@ class SchemaToolTest extends OrmTestCase
             $schema->hasTable('cms_address'),
             'The original table should have been overwritten by the listener, so cms_address table should not exist.',
         );
+    }
+
+    #[RequiresMethod(Schema::class, 'edit')]
+    #[IgnoreDeprecations]
+    public function testNotUsingSchemaEditorApiIsDeprecated(): void
+    {
+        $em = $this->getTestEntityManager();
+        $em->getConfiguration()->setUseSchemaEditorApi(false);
+
+        // Take the expectation after disabling the API, so that this only verifies
+        // the deprecation triggered when the SchemaTool is instantiated.
+        $this->expectDeprecationWithIdentifier('https://github.com/doctrine/orm/pull/12780');
+
+        new SchemaTool($em);
+    }
+
+    #[RequiresMethod(Schema::class, 'edit')]
+    public function testUsingSchemaEditorApiIsNotDeprecated(): void
+    {
+        $em = $this->getTestEntityManager();
+        $em->getConfiguration()->setUseSchemaEditorApi(true);
+
+        $this->expectNoDeprecationWithIdentifier('https://github.com/doctrine/orm/pull/12780');
+
+        new SchemaTool($em);
     }
 
     private function getSchemaTableForEntity(string $className): DbalTable
@@ -960,6 +1132,11 @@ class SchemaToolTest extends OrmTestCase
         self::assertTrue(self::indexIsFulltext($index), 'Index should be fulltext.');
     }
 
+    private static function assertIndexIsSpatial(DbalIndex $index): void
+    {
+        self::assertTrue(self::indexIsSpatial($index), 'Index should be spatial.');
+    }
+
     private static function indexIsUnique(DbalIndex $index): bool
     {
         if (enum_exists(IndexType::class)) {
@@ -976,6 +1153,24 @@ class SchemaToolTest extends OrmTestCase
         }
 
         return in_array('fulltext', $index->getFlags(), true);
+    }
+
+    private static function indexIsSpatial(DbalIndex $index): bool
+    {
+        if (enum_exists(IndexType::class)) {
+            return $index->getType() === IndexType::SPATIAL;
+        }
+
+        return in_array('spatial', $index->getFlags(), true);
+    }
+
+    private static function indexIsClustered(DbalIndex $index): bool
+    {
+        if (method_exists(DbalIndex::class, 'isClustered')) {
+            return $index->isClustered();
+        }
+
+        return in_array('clustered', $index->getFlags(), true);
     }
 
     private static function findUniqueNonPrimaryIndex(DbalTable $table): DbalIndex|null
@@ -1533,6 +1728,27 @@ class GH5593UnflaggedIndexWithUniqueConstraint
 }
 
 #[Entity]
+#[Table(name: 'gh5593_flagged_indexes')]
+#[Index(name: 'fulltext_title', columns: ['title'], flags: ['fulltext'])]
+#[Index(name: 'spatial_title', columns: ['position'], flags: ['spatial'])]
+#[Index(name: 'clustered_title', columns: ['subtitle'], flags: ['clustered'])]
+class GH5593FlaggedIndexes
+{
+    #[Id]
+    #[Column]
+    public int $id = 0;
+
+    #[Column(length: 255)]
+    public string $title = '';
+
+    #[Column(length: 255)]
+    public string $position = '';
+
+    #[Column(length: 255)]
+    public string $subtitle = '';
+}
+
+#[Entity]
 #[Table(name: 'gh5593_partial_unique')]
 #[Index(name: 'idx_partial', columns: ['name'], options: ['where' => 'name IS NOT NULL'])]
 #[Index(name: 'idx_covered_partial', columns: ['code'], options: ['where' => 'code IS NOT NULL'])]
@@ -1562,4 +1778,26 @@ class QuotedEntity
 
     #[Column(name: '`quoted-name`')]
     public string $name = '';
+}
+
+#[Entity]
+#[Table(name: 'fulltext_spatial_flag_index')]
+#[Index(name: 'bad_idx', columns: ['title'], flags: ['fulltext', 'spatial'])]
+class FulltextSpatialFlagIndex
+{
+    #[Id]
+    #[Column]
+    public int $id = 0;
+
+    #[Column(length: 255)]
+    public string $title = '';
+}
+
+#[Entity]
+#[Table(name: 'unique_scalar_id')]
+class UniqueScalarIdEntity
+{
+    #[Id]
+    #[Column(unique: true)]
+    public int $id = 0;
 }
